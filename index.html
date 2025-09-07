@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P File Sharing - Browser Test</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔐 P2P File Sharing - Browser Test</h1>
+            <div class="status">
+                <span id="status-indicator" class="indicator"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </div>
+        
+        <div class="main">
+            <!-- Session Panel -->
+            <div class="panel session-panel">
+                <h3>Session Control</h3>
+                <button id="create-btn" class="btn btn-primary">Create Session</button>
+                <button id="join-btn" class="btn btn-primary">Join Session</button>
+                
+                <!-- Token Display -->
+                <div id="token-section" class="hidden">
+                    <h4>Share this token:</h4>
+                    <div id="token-display" class="token-display"></div>
+                    <button id="copy-btn" class="btn">Copy Token</button>
+                </div>
+                
+                <!-- Token Input -->
+                <div id="join-section" class="hidden">
+                    <h4>Enter Session Token:</h4>
+                    <input type="text" id="token-input" placeholder="Paste token here..." 
+                           style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <button id="connect-btn" class="btn btn-primary">Connect</button>
+                    <button id="cancel-btn" class="btn">Cancel</button>
+                </div>
+                
+                <!-- Encryption Status -->
+                <div style="margin-top: 20px; text-align: center;">
+                    <span id="encryption-icon">🔄</span>
+                    <span id="encryption-text">Preparing...</span>
+                </div>
+            </div>
+            
+            <!-- File Transfer Panel -->
+            <div class="panel file-panel">
+                <h3>File Transfer</h3>
+                
+                <!-- File Selection -->
+                <div id="file-input-zone" class="file-input">
+                    <div>📁</div>
+                    <h4>Drop files here or click to select</h4>
+                    <p>Select files to send securely</p>
+                    <input type="file" id="file-input" multiple style="display: none;">
+                </div>
+                
+                <!-- Selected Files -->
+                <div id="selected-files" class="file-list hidden"></div>
+                <button id="send-btn" class="btn btn-success" disabled>Send Files</button>
+                
+                <!-- Progress -->
+                <div id="progress-section" class="hidden">
+                    <div class="progress">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <div id="progress-text" style="text-align: center;">0%</div>
+                </div>
+                
+                <!-- Received Files -->
+                <div>
+                    <h4>Received Files</h4>
+                    <div id="received-files" class="file-list">
+                        <div style="padding: 20px; text-align: center; color: #6b7280;">
+                            No files received yet
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Debug Log -->
+        <div class="panel" style="margin: 20px;">
+            <h4>Debug Log</h4>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
