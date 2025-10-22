@@ -7,16 +7,15 @@ class P2PBrowserTest {
         this.isEncryptionReady = false;
         this.selectedFiles = [];
         this.receivedFiles = [];
-        
         this.init();
     }
-    
+
     init() {
         this.bindEvents();
         this.log('🚀 P2P Browser Test initialized');
         this.log(`🌐 Using server: ${this.wsUrl}`);
     }
-    
+
     bindEvents() {
         document.getElementById('create-btn').onclick = () => this.createSession();
         document.getElementById('join-btn').onclick = () => this.showJoinInput();
@@ -32,20 +31,15 @@ class P2PBrowserTest {
         document.getElementById('send-btn').onclick = () => this.sendFiles();
 
         const zone = document.getElementById('file-input-zone');
-        zone.ondragover = (e) => { 
-            e.preventDefault(); 
-            zone.style.background = '#f0f0ff'; 
-        };
-        zone.ondragleave = () => { 
-            zone.style.background = ''; 
-        };
+        zone.ondragover = (e) => { e.preventDefault(); zone.style.background = '#f0f0ff'; };
+        zone.ondragleave = () => { zone.style.background = ''; };
         zone.ondrop = (e) => {
             e.preventDefault();
             zone.style.background = '';
             this.handleFileSelect(Array.from(e.dataTransfer.files));
         };
     }
-    
+
     async createSession() {
         try {
             this.log('🎯 Creating session...');
@@ -60,14 +54,13 @@ class P2PBrowserTest {
             this.log('❌ Failed to create session: ' + error.message);
         }
     }
-    
+
     async joinSession() {
         const token = document.getElementById('token-input').value.trim();
         if (!token) {
             alert('Please enter a session token');
             return;
         }
-        
         try {
             this.log('🎯 Joining session...');
             await this.connectWebSocket();
@@ -81,46 +74,45 @@ class P2PBrowserTest {
             this.log('❌ Failed to join session: ' + error.message);
         }
     }
-    
+
     connectWebSocket() {
         return new Promise((resolve, reject) => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 resolve();
                 return;
             }
-            
             this.updateStatus('Connecting...');
             this.ws = new WebSocket(this.wsUrl);
-            
+
             const timeout = setTimeout(() => reject(new Error('Connection timeout')), 10000);
-            
+
             this.ws.onopen = () => {
                 clearTimeout(timeout);
                 this.log('✅ Connected to P2P server');
                 this.updateStatus('Connected');
                 resolve();
             };
-            
+
             this.ws.onmessage = (event) => {
                 const message = JSON.parse(event.data);
                 this.log(`📨 Received: ${message.type}`);
                 this.handleMessage(message);
             };
-            
+
             this.ws.onerror = (error) => {
                 clearTimeout(timeout);
                 this.log('❌ WebSocket error');
                 this.updateStatus('Error');
                 reject(error);
             };
-            
+
             this.ws.onclose = () => {
                 this.log('🔌 Disconnected');
                 this.updateStatus('Disconnected');
             };
         });
     }
-    
+
     sendMessage(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message));
@@ -129,7 +121,7 @@ class P2PBrowserTest {
         }
         return false;
     }
-    
+
     async handleMessage(message) {
         switch (message.type) {
             case 'INVITATION_CREATED':
@@ -137,54 +129,42 @@ class P2PBrowserTest {
                 this.showToken(message.token);
                 await this.setupEncryption();
                 break;
-                
             case 'JOINED_SESSION':
                 this.log('✅ Joined session: ' + message.session_id);
                 this.hideJoinInput();
                 await this.setupEncryption();
                 break;
-                
             case 'KEY_EXCHANGE':
                 this.log('🔑 Received peer public key');
                 await this.handleKeyExchange(message);
                 break;
-                
             case 'ENCRYPTED_MESSAGE':
                 this.log('📨 Received encrypted file');
                 await this.handleEncryptedMessage(message);
                 break;
-                
             default:
                 this.log('❓ Unknown message: ' + message.type);
         }
     }
-    
+
     async setupEncryption() {
         try {
             this.log('🔐 Setting up encryption...');
             this.updateEncryptionStatus('🔄', 'Generating keys...');
-            
-            // Generate ECDH key pair
             this.keyPair = await crypto.subtle.generateKey(
                 { name: 'ECDH', namedCurve: 'P-256' },
                 true,
                 ['deriveKey', 'deriveBits']
             );
-            
-            // Export public key
             const publicKeyBuffer = await crypto.subtle.exportKey('raw', this.keyPair.publicKey);
             const publicKeyBytes = new Uint8Array(publicKeyBuffer);
-            
-            // Send public key
             this.sendMessage({
                 type: 'KEY_EXCHANGE',
                 public_key: Array.from(publicKeyBytes),
                 party: 'web',
                 algorithm: 'ECDH-P256'
             });
-            
             this.updateEncryptionStatus('🔑', 'Exchanging keys...');
-            
             setTimeout(() => {
                 if (!this.isEncryptionReady) {
                     this.onEncryptionReady();
@@ -195,7 +175,7 @@ class P2PBrowserTest {
             this.updateEncryptionStatus('⚠️', 'Encryption error');
         }
     }
-    
+
     async importAesKeyFromBase64(aesKeyBase64) {
         const binary = atob(aesKeyBase64);
         const bytes = new Uint8Array(binary.length);
@@ -208,7 +188,7 @@ class P2PBrowserTest {
             ["encrypt", "decrypt"]
         );
     }
-    
+
     async handleKeyExchange(message) {
         try {
             // Python backend may send AES key directly
@@ -235,23 +215,22 @@ class P2PBrowserTest {
             this.log('❌ Key exchange failed: ' + error.message);
         }
     }
-    
+
     onEncryptionReady() {
         this.isEncryptionReady = true;
         this.log('✅ Encryption ready!');
         this.updateEncryptionStatus('🔒', 'End-to-end encrypted');
         document.getElementById('send-btn').disabled = false;
     }
-    
+
     handleFileSelect(files) {
         this.selectedFiles = files;
         this.log(`📁 Selected ${files.length} file(s)`);
         this.updateFileList();
     }
-    
+
     updateFileList() {
         const container = document.getElementById('selected-files');
-        
         if (this.selectedFiles.length > 0) {
             container.classList.remove('hidden');
             container.innerHTML = this.selectedFiles.map((file, index) => `
@@ -267,27 +246,25 @@ class P2PBrowserTest {
             container.classList.add('hidden');
         }
     }
-    
+
     removeFile(index) {
         this.selectedFiles.splice(index, 1);
         this.updateFileList();
     }
-    
+
     async sendFiles() {
         if (!this.isEncryptionReady) {
             alert('Encryption not ready. Please wait...');
             return;
         }
-        
         if (this.selectedFiles.length === 0) {
             alert('No files selected.');
             return;
         }
-        
         this.log(`📤 Sending ${this.selectedFiles.length} file(s)...`);
         document.getElementById('progress-section').classList.remove('hidden');
         document.getElementById('send-btn').disabled = true;
-        
+
         try {
             for (let i = 0; i < this.selectedFiles.length; i++) {
                 const file = this.selectedFiles[i];
@@ -321,13 +298,12 @@ class P2PBrowserTest {
             }, 2000);
         }
     }
-    
+
     async handleEncryptedMessage(message) {
         try {
             const decrypted = await this.decryptData(message.encrypted_payload);
             if (decrypted.type === 'FILE_DATA') {
                 this.log(`📁 Received: ${decrypted.filename}`);
-                // Create download
                 const blob = new Blob([new Uint8Array(decrypted.data)]);
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -335,7 +311,6 @@ class P2PBrowserTest {
                 a.download = decrypted.filename;
                 a.click();
                 URL.revokeObjectURL(url);
-                // Update UI
                 this.receivedFiles.push({
                     name: decrypted.filename,
                     size: decrypted.size,
@@ -348,7 +323,7 @@ class P2PBrowserTest {
             this.log('❌ Decrypt failed: ' + error.message);
         }
     }
-    
+
     async encryptData(data) {
         const encoder = new TextEncoder();
         const dataBytes = encoder.encode(JSON.stringify(data));
@@ -363,10 +338,8 @@ class P2PBrowserTest {
             data: Array.from(new Uint8Array(encrypted))
         };
     }
-    
+
     async decryptData(encryptedData) {
-        // Refactored: Handles both browser-native and python-style base64 payloads
-        // If Python payload: {iv: "...", ciphertext: "...", key: "..."}
         if (typeof encryptedData.iv === "string" && typeof encryptedData.ciphertext === "string") {
             const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
             const ciphertext = Uint8Array.from(atob(encryptedData.ciphertext), c => c.charCodeAt(0));
@@ -392,7 +365,7 @@ class P2PBrowserTest {
             return JSON.parse(decoder.decode(decrypted));
         }
     }
-    
+
     updateReceivedList() {
         const container = document.getElementById('received-files');
         if (this.receivedFiles.length > 0) {
@@ -409,7 +382,7 @@ class P2PBrowserTest {
             container.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">No files received yet</div>';
         }
     }
-    
+
     updateStatus(status) {
         const indicator = document.getElementById('status-indicator');
         const text = document.getElementById('status-text');
@@ -420,27 +393,27 @@ class P2PBrowserTest {
             indicator.classList.remove('connected');
         }
     }
-    
+
     updateEncryptionStatus(icon, text) {
         document.getElementById('encryption-icon').textContent = icon;
         document.getElementById('encryption-text').textContent = text;
     }
-    
+
     showToken(token) {
         document.getElementById('token-section').classList.remove('hidden');
         document.getElementById('token-display').textContent = token;
     }
-    
+
     showJoinInput() {
         document.getElementById('join-section').classList.remove('hidden');
         document.getElementById('token-input').focus();
     }
-    
+
     hideJoinInput() {
         document.getElementById('join-section').classList.add('hidden');
         document.getElementById('token-input').value = '';
     }
-    
+
     copyToken() {
         const token = document.getElementById('token-display').textContent;
         navigator.clipboard.writeText(token).then(() => {
@@ -449,12 +422,12 @@ class P2PBrowserTest {
             setTimeout(() => btn.textContent = 'Copy Token', 2000);
         });
     }
-    
+
     updateProgress(percent) {
         document.getElementById('progress-fill').style.width = percent + '%';
         document.getElementById('progress-text').textContent = Math.round(percent) + '%';
     }
-    
+
     formatFileSize(bytes) {
         if (bytes === 0) return '0 Bytes';
         const k = 1024;
@@ -462,7 +435,7 @@ class P2PBrowserTest {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
-    
+
     log(message) {
         const log = document.getElementById('log');
         const time = new Date().toLocaleTimeString();
@@ -471,7 +444,6 @@ class P2PBrowserTest {
     }
 }
 
-// Initialize app
 let app;
 document.addEventListener('DOMContentLoaded', () => {
     app = new P2PBrowserTest();
