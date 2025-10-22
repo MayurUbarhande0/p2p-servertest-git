@@ -1,4 +1,3 @@
-// Complete P2P File Sharing Implementation
 class P2PBrowserTest {
     constructor() {
         this.ws = null;
@@ -19,14 +18,11 @@ class P2PBrowserTest {
     }
     
     bindEvents() {
-        // Session controls
         document.getElementById('create-btn').onclick = () => this.createSession();
         document.getElementById('join-btn').onclick = () => this.showJoinInput();
         document.getElementById('connect-btn').onclick = () => this.joinSession();
         document.getElementById('cancel-btn').onclick = () => this.hideJoinInput();
         document.getElementById('copy-btn').onclick = () => this.copyToken();
-        
-        // File operations
         document.getElementById('file-input-zone').onclick = () => {
             document.getElementById('file-input').click();
         };
@@ -34,8 +30,7 @@ class P2PBrowserTest {
             this.handleFileSelect(Array.from(e.target.files));
         };
         document.getElementById('send-btn').onclick = () => this.sendFiles();
-        
-        // Drag and drop
+
         const zone = document.getElementById('file-input-zone');
         zone.ondragover = (e) => { 
             e.preventDefault(); 
@@ -190,39 +185,52 @@ class P2PBrowserTest {
             
             this.updateEncryptionStatus('🔑', 'Exchanging keys...');
             
-            // Auto-ready for single user testing
             setTimeout(() => {
                 if (!this.isEncryptionReady) {
                     this.onEncryptionReady();
                 }
             }, 3000);
-            
         } catch (error) {
             this.log('❌ Encryption setup failed: ' + error.message);
             this.updateEncryptionStatus('⚠️', 'Encryption error');
         }
     }
     
+    async importAesKeyFromBase64(aesKeyBase64) {
+        const binary = atob(aesKeyBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return await crypto.subtle.importKey(
+            "raw",
+            bytes.buffer,
+            { name: "AES-GCM" },
+            false,
+            ["encrypt", "decrypt"]
+        );
+    }
+    
     async handleKeyExchange(message) {
         try {
-            // Import peer's public key
+            // Python backend may send AES key directly
+            if (message.key) {
+                this.sharedKey = await this.importAesKeyFromBase64(message.key);
+                this.onEncryptionReady();
+                return;
+            }
+            // Otherwise: normal browser ECDH
             const peerKeyArray = new Uint8Array(message.public_key);
             const peerPublicKey = await crypto.subtle.importKey(
                 'raw', peerKeyArray,
                 { name: 'ECDH', namedCurve: 'P-256' },
                 false, []
             );
-            
-            // Derive shared secret
             this.sharedKey = await crypto.subtle.deriveKey(
                 { name: 'ECDH', public: peerPublicKey },
                 this.keyPair.privateKey,
                 { name: 'AES-GCM', length: 256 },
                 false, ['encrypt', 'decrypt']
             );
-            
             this.onEncryptionReady();
-            
         } catch (error) {
             this.log('❌ Key exchange failed: ' + error.message);
         }
@@ -283,39 +291,26 @@ class P2PBrowserTest {
         try {
             for (let i = 0; i < this.selectedFiles.length; i++) {
                 const file = this.selectedFiles[i];
-                
-                // Read file
                 const arrayBuffer = await file.arrayBuffer();
                 const fileData = new Uint8Array(arrayBuffer);
-                
-                // Prepare payload
                 const payload = {
                     filename: file.name,
                     data: Array.from(fileData),
                     size: file.size,
                     type: 'FILE_DATA'
                 };
-                
-                // Encrypt
                 const encrypted = await this.encryptData(payload);
-                
-                // Send
                 this.sendMessage({
                     type: 'ENCRYPTED_MESSAGE',
                     encrypted_payload: encrypted,
                     message_type: 'FILE_DATA',
                     encryption_algorithm: 'AES-256-GCM'
                 });
-                
-                // Update progress
                 const progress = ((i + 1) / this.selectedFiles.length) * 100;
                 this.updateProgress(progress);
-                
                 this.log(`✅ Sent: ${file.name}`);
             }
-            
             this.log('🎉 All files sent successfully!');
-            
         } catch (error) {
             this.log('❌ Send failed: ' + error.message);
         } finally {
@@ -330,10 +325,8 @@ class P2PBrowserTest {
     async handleEncryptedMessage(message) {
         try {
             const decrypted = await this.decryptData(message.encrypted_payload);
-            
             if (decrypted.type === 'FILE_DATA') {
                 this.log(`📁 Received: ${decrypted.filename}`);
-                
                 // Create download
                 const blob = new Blob([new Uint8Array(decrypted.data)]);
                 const url = URL.createObjectURL(blob);
@@ -342,7 +335,6 @@ class P2PBrowserTest {
                 a.download = decrypted.filename;
                 a.click();
                 URL.revokeObjectURL(url);
-                
                 // Update UI
                 this.receivedFiles.push({
                     name: decrypted.filename,
@@ -350,7 +342,6 @@ class P2PBrowserTest {
                     time: new Date().toLocaleTimeString()
                 });
                 this.updateReceivedList();
-                
                 this.log(`✅ Downloaded: ${decrypted.filename}`);
             }
         } catch (error) {
@@ -362,13 +353,11 @@ class P2PBrowserTest {
         const encoder = new TextEncoder();
         const dataBytes = encoder.encode(JSON.stringify(data));
         const iv = crypto.getRandomValues(new Uint8Array(12));
-        
         const encrypted = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv },
             this.sharedKey,
             dataBytes
         );
-        
         return {
             iv: Array.from(iv),
             data: Array.from(new Uint8Array(encrypted))
@@ -376,22 +365,36 @@ class P2PBrowserTest {
     }
     
     async decryptData(encryptedData) {
-        const iv = new Uint8Array(encryptedData.iv);
-        const ciphertext = new Uint8Array(encryptedData.data);
-        
-        const decrypted = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv },
-            this.sharedKey,
-            ciphertext
-        );
-        
-        const decoder = new TextDecoder();
-        return JSON.parse(decoder.decode(decrypted));
+        // Refactored: Handles both browser-native and python-style base64 payloads
+        // If Python payload: {iv: "...", ciphertext: "...", key: "..."}
+        if (typeof encryptedData.iv === "string" && typeof encryptedData.ciphertext === "string") {
+            const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
+            const ciphertext = Uint8Array.from(atob(encryptedData.ciphertext), c => c.charCodeAt(0));
+            if (encryptedData.key) {
+                this.sharedKey = await this.importAesKeyFromBase64(encryptedData.key);
+            }
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv },
+                this.sharedKey,
+                ciphertext
+            );
+            const decoder = new TextDecoder();
+            return JSON.parse(decoder.decode(decrypted));
+        } else {
+            const iv = new Uint8Array(encryptedData.iv);
+            const ciphertext = new Uint8Array(encryptedData.data);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv },
+                this.sharedKey,
+                ciphertext
+            );
+            const decoder = new TextDecoder();
+            return JSON.parse(decoder.decode(decrypted));
+        }
     }
     
     updateReceivedList() {
         const container = document.getElementById('received-files');
-        
         if (this.receivedFiles.length > 0) {
             container.innerHTML = this.receivedFiles.map(file => `
                 <div class="file-item">
@@ -407,13 +410,10 @@ class P2PBrowserTest {
         }
     }
     
-    // UI Helper Methods
     updateStatus(status) {
         const indicator = document.getElementById('status-indicator');
         const text = document.getElementById('status-text');
-        
         text.textContent = status;
-        
         if (status === 'Connected') {
             indicator.classList.add('connected');
         } else {
